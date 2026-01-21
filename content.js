@@ -288,8 +288,21 @@
     }, 5000);
   }
 
-  // Keyboard shortcut (Cmd+Shift+A or Ctrl+Shift+A)
+  // Toggle button visibility
+  function toggleButtonVisibility() {
+    const button = document.getElementById('affinity-stealth-btn');
+    if (button) {
+      if (button.style.display === 'none') {
+        button.style.display = 'flex';
+      } else {
+        button.style.display = 'none';
+      }
+    }
+  }
+
+  // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
+    // Cmd+Shift+A or Ctrl+Shift+A - Open modal
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
       e.preventDefault();
       const overlay = document.getElementById('affinity-modal-overlay');
@@ -298,6 +311,11 @@
       } else {
         showNoteModal();
       }
+    }
+    // Cmd+Shift+H or Ctrl+Shift+H - Toggle button visibility
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'h') {
+      e.preventDefault();
+      toggleButtonVisibility();
     }
     // ESC to close modal
     if (e.key === 'Escape') {
