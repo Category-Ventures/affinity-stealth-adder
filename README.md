@@ -1,10 +1,15 @@
 # Affinity Stealth Adder
 
-Chrome extension to quickly add stealth founders from LinkedIn to Affinity CRM.
+Chrome extension to quickly add companies and stealth founders to Affinity CRM.
 
 ## What it does
 
-When you're on a LinkedIn profile of someone at a stealth startup, click the floating button to:
+**On any company website** (e.g. `xyz.com`), click the button to:
+- Create an organization with the company name and domain
+- Add it to your Master Deal List
+- Automatically assign you as the owner
+
+**On a LinkedIn profile** of someone at a stealth startup, click the button to:
 - Create an organization named `Stealth_FirstName LastName`
 - Create/link the person to that organization
 - Add it to your Master Deal List

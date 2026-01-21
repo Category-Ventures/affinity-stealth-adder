@@ -6,37 +6,103 @@
   if (window.affinityStealthAdderLoaded) return;
   window.affinityStealthAdderLoaded = true;
 
+  // Detect page type
+  function getPageType() {
+    const url = window.location.href;
+    if (url.includes('linkedin.com/in/')) {
+      return 'linkedin_profile';
+    }
+    return 'website';
+  }
+
   // Create floating button
   function createFloatingButton() {
+    // Don't show on Affinity itself or extension pages
+    if (window.location.hostname.includes('affinity.co') ||
+        window.location.protocol === 'chrome-extension:') {
+      return null;
+    }
+
     const button = document.createElement('button');
     button.id = 'affinity-stealth-btn';
-    button.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 5v14M5 12h14"/>
-      </svg>
-      <span>Add to Affinity</span>
-    `;
-    button.title = 'Add as Stealth to Affinity';
-    document.body.appendChild(button);
 
+    const pageType = getPageType();
+    if (pageType === 'linkedin_profile') {
+      button.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        <span>Add Stealth</span>
+      `;
+      button.title = 'Add as Stealth founder to Affinity';
+    } else {
+      button.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        <span>Add to Affinity</span>
+      `;
+      button.title = 'Add this company to Affinity';
+    }
+
+    document.body.appendChild(button);
     button.addEventListener('click', handleAddToAffinity);
     return button;
   }
 
   // Extract profile data from LinkedIn page
-  function extractProfileData() {
-    // Get the profile name - LinkedIn uses h1 for the main name
+  function extractLinkedInData() {
     const nameElement = document.querySelector('h1.text-heading-xlarge') ||
                         document.querySelector('h1[class*="text-heading"]') ||
                         document.querySelector('.pv-top-card h1') ||
                         document.querySelector('h1');
 
     const fullName = nameElement ? nameElement.textContent.trim() : null;
-    const linkedinUrl = window.location.href.split('?')[0]; // Remove query params
+    const linkedinUrl = window.location.href.split('?')[0];
 
     return {
+      type: 'linkedin_profile',
       fullName,
       linkedinUrl
+    };
+  }
+
+  // Extract company data from a regular website
+  function extractWebsiteData() {
+    const hostname = window.location.hostname.replace('www.', '');
+    const domain = hostname;
+
+    // Try to get company name from various sources
+    let companyName = null;
+
+    // 1. Try Open Graph meta tag
+    const ogTitle = document.querySelector('meta[property="og:site_name"]');
+    if (ogTitle && ogTitle.content) {
+      companyName = ogTitle.content.trim();
+    }
+
+    // 2. Try page title (clean it up)
+    if (!companyName) {
+      const title = document.title;
+      // Take first part before common separators
+      companyName = title.split(/[\|\-–—:]/)[0].trim();
+      // If it's too long or looks like a page title, use domain
+      if (companyName.length > 50 || companyName.split(' ').length > 5) {
+        companyName = null;
+      }
+    }
+
+    // 3. Fall back to domain name (capitalize it)
+    if (!companyName) {
+      const domainParts = domain.split('.');
+      companyName = domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
+    }
+
+    return {
+      type: 'website',
+      companyName,
+      domain,
+      url: window.location.href
     };
   }
 
@@ -44,6 +110,7 @@
   async function handleAddToAffinity() {
     const button = document.getElementById('affinity-stealth-btn');
     const originalContent = button.innerHTML;
+    const pageType = getPageType();
 
     try {
       // Show loading state
@@ -55,17 +122,24 @@
         <span>Adding...</span>
       `;
 
-      // Extract profile data
-      const profileData = extractProfileData();
-
-      if (!profileData.fullName) {
-        throw new Error('Could not extract profile name. Make sure you are on a LinkedIn profile page.');
+      // Extract data based on page type
+      let data;
+      if (pageType === 'linkedin_profile') {
+        data = extractLinkedInData();
+        if (!data.fullName) {
+          throw new Error('Could not extract profile name. Make sure you are on a LinkedIn profile page.');
+        }
+      } else {
+        data = extractWebsiteData();
+        if (!data.companyName) {
+          throw new Error('Could not extract company name from this page.');
+        }
       }
 
       // Send to background script
       const response = await chrome.runtime.sendMessage({
         action: 'addToAffinity',
-        data: profileData
+        data: data
       });
 
       if (response.success) {
@@ -116,21 +190,15 @@
     createFloatingButton();
   }
 
-  // Re-check on navigation (LinkedIn is a SPA)
+  // Re-check on navigation (for SPAs like LinkedIn)
   let lastUrl = location.href;
   new MutationObserver(() => {
     const url = location.href;
     if (url !== lastUrl) {
       lastUrl = url;
-      // Only show button on profile pages
-      if (url.includes('/in/')) {
-        if (!document.getElementById('affinity-stealth-btn')) {
-          createFloatingButton();
-        }
-      } else {
-        const existingBtn = document.getElementById('affinity-stealth-btn');
-        if (existingBtn) existingBtn.remove();
-      }
+      const existingBtn = document.getElementById('affinity-stealth-btn');
+      if (existingBtn) existingBtn.remove();
+      createFloatingButton();
     }
   }).observe(document, { subtree: true, childList: true });
 })();

@@ -12,7 +12,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-async function handleAddToAffinity(profileData) {
+async function handleAddToAffinity(data) {
   // Get stored credentials
   const settings = await chrome.storage.sync.get(['affinityApiKey', 'affinityListId']);
 
@@ -20,36 +20,49 @@ async function handleAddToAffinity(profileData) {
     throw new Error('Please configure your Affinity API key and List ID in the extension settings.');
   }
 
-  const { fullName, linkedinUrl } = profileData;
-  const orgName = `Stealth_${fullName}`;
-
-  // Parse name into first and last
-  const nameParts = fullName.split(' ');
-  const firstName = nameParts[0];
-  const lastName = nameParts.slice(1).join(' ') || firstName;
-
   try {
-    // Step 1: Get current user (for owner assignment)
+    // Get current user (for owner assignment)
     const currentUser = await getCurrentUser(settings.affinityApiKey);
     console.log('Current user:', currentUser);
 
-    // Step 2: Create the organization
-    const organization = await createOrganization(settings.affinityApiKey, orgName);
-    console.log('Created organization:', organization);
+    let organization, person, listEntry;
 
-    // Step 3: Create the person
-    const person = await createPerson(settings.affinityApiKey, firstName, lastName, linkedinUrl);
-    console.log('Created/found person:', person);
+    if (data.type === 'linkedin_profile') {
+      // LinkedIn profile flow - create Stealth org with person
+      const { fullName, linkedinUrl } = data;
+      const orgName = `Stealth_${fullName}`;
 
-    // Step 4: Link person to organization (both directions for reliability)
-    await linkPersonToOrganization(settings.affinityApiKey, person.id, organization.id);
-    console.log('Linked person to organization');
+      // Parse name into first and last
+      const nameParts = fullName.split(' ');
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(' ') || firstName;
 
-    // Step 5: Add organization to the deal list
-    const listEntry = await addToList(settings.affinityApiKey, settings.affinityListId, organization.id);
+      // Create the organization
+      organization = await createOrganization(settings.affinityApiKey, orgName, null);
+      console.log('Created organization:', organization);
+
+      // Create the person
+      person = await createPerson(settings.affinityApiKey, firstName, lastName, linkedinUrl);
+      console.log('Created/found person:', person);
+
+      // Link person to organization
+      await linkPersonToOrganization(settings.affinityApiKey, person.id, organization.id);
+      console.log('Linked person to organization');
+
+    } else {
+      // Website flow - create org with domain
+      const { companyName, domain, url } = data;
+
+      // Create the organization with domain
+      organization = await createOrganization(settings.affinityApiKey, companyName, domain);
+      console.log('Created organization:', organization);
+    }
+
+    // Add organization to the deal list
+    listEntry = await addToList(settings.affinityApiKey, settings.affinityListId, organization.id);
     console.log('Added to list:', listEntry);
 
-    // Step 6: Set owner on the list entry
+    // Set owner on the list entry
     if (currentUser && listEntry) {
       await setListEntryOwner(settings.affinityApiKey, settings.affinityListId, listEntry.id, currentUser.id);
       console.log('Set owner to:', currentUser.first_name, currentUser.last_name);
@@ -58,7 +71,7 @@ async function handleAddToAffinity(profileData) {
     return {
       success: true,
       organization: organization,
-      person: person,
+      person: person || null,
       listEntry: listEntry,
       owner: currentUser
     };
@@ -143,16 +156,19 @@ async function setListEntryOwner(apiKey, listId, listEntryId, userId) {
   }
 }
 
-async function createOrganization(apiKey, name) {
+async function createOrganization(apiKey, name, domain) {
+  const body = { name };
+  if (domain) {
+    body.domain = domain;
+  }
+
   const response = await fetch(`${AFFINITY_API_BASE}/organizations`, {
     method: 'POST',
     headers: {
       'Authorization': 'Basic ' + btoa(':' + apiKey),
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      name: name
-    })
+    body: JSON.stringify(body)
   });
 
   if (!response.ok) {
