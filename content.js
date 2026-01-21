@@ -34,7 +34,7 @@
         </svg>
         <span>Add Stealth</span>
       `;
-      button.title = 'Add as Stealth founder to Affinity';
+      button.title = 'Add as Stealth founder to Affinity (⌘+Shift+A)';
     } else {
       button.innerHTML = `
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -42,12 +42,109 @@
         </svg>
         <span>Add to Affinity</span>
       `;
-      button.title = 'Add this company to Affinity';
+      button.title = 'Add this company to Affinity (⌘+Shift+A)';
     }
 
     document.body.appendChild(button);
-    button.addEventListener('click', handleAddToAffinity);
+    button.addEventListener('click', showNoteModal);
     return button;
+  }
+
+  // Create modal for notes input
+  function createModal() {
+    const overlay = document.createElement('div');
+    overlay.id = 'affinity-modal-overlay';
+    overlay.innerHTML = `
+      <div id="affinity-modal">
+        <div class="affinity-modal-header">
+          <span id="affinity-modal-title">Add to Affinity</span>
+          <button id="affinity-modal-close">&times;</button>
+        </div>
+        <div id="affinity-modal-body">
+          <div id="affinity-duplicate-warning" style="display: none;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span>This organization may already exist in Affinity.</span>
+            <a id="affinity-duplicate-link" href="#" target="_blank">View existing →</a>
+          </div>
+          <label for="affinity-note-input">Add a note (optional)</label>
+          <textarea id="affinity-note-input" placeholder="e.g., Met at demo day, interesting AI startup..."></textarea>
+        </div>
+        <div class="affinity-modal-footer">
+          <button id="affinity-modal-cancel">Cancel</button>
+          <button id="affinity-modal-submit">Add to Affinity</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Event listeners
+    document.getElementById('affinity-modal-close').addEventListener('click', hideModal);
+    document.getElementById('affinity-modal-cancel').addEventListener('click', hideModal);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) hideModal();
+    });
+
+    return overlay;
+  }
+
+  function showNoteModal() {
+    let overlay = document.getElementById('affinity-modal-overlay');
+    if (!overlay) {
+      overlay = createModal();
+    }
+
+    const pageType = getPageType();
+    const title = pageType === 'linkedin_profile' ? 'Add Stealth Founder' : 'Add Company';
+    document.getElementById('affinity-modal-title').textContent = title;
+    document.getElementById('affinity-note-input').value = '';
+    document.getElementById('affinity-duplicate-warning').style.display = 'none';
+
+    overlay.style.display = 'flex';
+    document.getElementById('affinity-note-input').focus();
+
+    // Check for duplicates
+    checkDuplicate();
+
+    // Set up submit handler
+    const submitBtn = document.getElementById('affinity-modal-submit');
+    submitBtn.onclick = () => handleAddToAffinity();
+  }
+
+  function hideModal() {
+    const overlay = document.getElementById('affinity-modal-overlay');
+    if (overlay) {
+      overlay.style.display = 'none';
+    }
+  }
+
+  async function checkDuplicate() {
+    const pageType = getPageType();
+    let data;
+
+    if (pageType === 'linkedin_profile') {
+      data = extractLinkedInData();
+    } else {
+      data = extractWebsiteData();
+    }
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'checkDuplicate',
+        data: data
+      });
+
+      if (response.exists) {
+        const warning = document.getElementById('affinity-duplicate-warning');
+        const link = document.getElementById('affinity-duplicate-link');
+        link.href = response.affinityUrl;
+        warning.style.display = 'flex';
+      }
+    } catch (e) {
+      console.log('Duplicate check failed:', e);
+    }
   }
 
   // Extract profile data from LinkedIn page
@@ -72,27 +169,21 @@
     const hostname = window.location.hostname.replace('www.', '');
     const domain = hostname;
 
-    // Try to get company name from various sources
     let companyName = null;
 
-    // 1. Try Open Graph meta tag
     const ogTitle = document.querySelector('meta[property="og:site_name"]');
     if (ogTitle && ogTitle.content) {
       companyName = ogTitle.content.trim();
     }
 
-    // 2. Try page title (clean it up)
     if (!companyName) {
       const title = document.title;
-      // Take first part before common separators
       companyName = title.split(/[\|\-–—:]/)[0].trim();
-      // If it's too long or looks like a page title, use domain
       if (companyName.length > 50 || companyName.split(' ').length > 5) {
         companyName = null;
       }
     }
 
-    // 3. Fall back to domain name (capitalize it)
     if (!companyName) {
       const domainParts = domain.split('.');
       companyName = domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
@@ -106,35 +197,34 @@
     };
   }
 
-  // Handle button click
+  // Handle adding to Affinity
   async function handleAddToAffinity() {
     const button = document.getElementById('affinity-stealth-btn');
-    const originalContent = button.innerHTML;
+    const submitBtn = document.getElementById('affinity-modal-submit');
+    const noteInput = document.getElementById('affinity-note-input');
     const pageType = getPageType();
 
     try {
       // Show loading state
-      button.classList.add('loading');
-      button.innerHTML = `
-        <svg class="spinner" width="20" height="20" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="60" stroke-dashoffset="20"/>
-        </svg>
-        <span>Adding...</span>
-      `;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Adding...';
 
       // Extract data based on page type
       let data;
       if (pageType === 'linkedin_profile') {
         data = extractLinkedInData();
         if (!data.fullName) {
-          throw new Error('Could not extract profile name. Make sure you are on a LinkedIn profile page.');
+          throw new Error('Could not extract profile name.');
         }
       } else {
         data = extractWebsiteData();
         if (!data.companyName) {
-          throw new Error('Could not extract company name from this page.');
+          throw new Error('Could not extract company name.');
         }
       }
+
+      // Add note to data
+      data.note = noteInput.value;
 
       // Send to background script
       const response = await chrome.runtime.sendMessage({
@@ -143,45 +233,85 @@
       });
 
       if (response.success) {
-        button.classList.remove('loading');
-        button.classList.add('success');
-        button.innerHTML = `
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-          <span>Added!</span>
-        `;
+        hideModal();
 
-        // Reset after 3 seconds
-        setTimeout(() => {
-          button.classList.remove('success');
-          button.innerHTML = originalContent;
-        }, 3000);
+        // Show success with link
+        showSuccessToast(response.affinityUrl);
+
+        // Update button temporarily
+        if (button) {
+          button.classList.add('success');
+          const originalHTML = button.innerHTML;
+          button.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span>Added!</span>
+          `;
+          setTimeout(() => {
+            button.classList.remove('success');
+            button.innerHTML = originalHTML;
+          }, 3000);
+        }
       } else {
         throw new Error(response.error || 'Failed to add to Affinity');
       }
     } catch (error) {
-      button.classList.remove('loading');
-      button.classList.add('error');
-      button.innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="15" y1="9" x2="9" y2="15"/>
-          <line x1="9" y1="9" x2="15" y2="15"/>
-        </svg>
-        <span>Error</span>
-      `;
-
       console.error('Affinity Stealth Adder Error:', error);
       alert('Error: ' + error.message);
-
-      // Reset after 3 seconds
-      setTimeout(() => {
-        button.classList.remove('error');
-        button.innerHTML = originalContent;
-      }, 3000);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Add to Affinity';
     }
   }
+
+  // Show success toast with link
+  function showSuccessToast(affinityUrl) {
+    const toast = document.createElement('div');
+    toast.id = 'affinity-success-toast';
+    toast.innerHTML = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      <span>Added to Affinity!</span>
+      <a href="${affinityUrl}" target="_blank">Open →</a>
+    `;
+    document.body.appendChild(toast);
+
+    // Animate in
+    setTimeout(() => toast.classList.add('show'), 10);
+
+    // Remove after 5 seconds
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, 5000);
+  }
+
+  // Keyboard shortcut (Cmd+Shift+A or Ctrl+Shift+A)
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      const overlay = document.getElementById('affinity-modal-overlay');
+      if (overlay && overlay.style.display === 'flex') {
+        hideModal();
+      } else {
+        showNoteModal();
+      }
+    }
+    // ESC to close modal
+    if (e.key === 'Escape') {
+      hideModal();
+    }
+    // Enter to submit when modal is open
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const overlay = document.getElementById('affinity-modal-overlay');
+      if (overlay && overlay.style.display === 'flex') {
+        e.preventDefault();
+        handleAddToAffinity();
+      }
+    }
+  });
 
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
@@ -198,6 +328,10 @@
       lastUrl = url;
       const existingBtn = document.getElementById('affinity-stealth-btn');
       if (existingBtn) existingBtn.remove();
+      const existingModal = document.getElementById('affinity-modal-overlay');
+      if (existingModal) existingModal.remove();
+      const existingToast = document.getElementById('affinity-success-toast');
+      if (existingToast) existingToast.remove();
       createFloatingButton();
     }
   }).observe(document, { subtree: true, childList: true });

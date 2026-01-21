@@ -1,10 +1,11 @@
-/* Affinity Stealth Adder - Floating Button Styles */
+/* Affinity Stealth Adder - Styles */
 
+/* Floating Button */
 #affinity-stealth-btn {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 9999;
+  z-index: 2147483646;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -54,20 +55,242 @@
 }
 
 @keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Modal Overlay */
+#affinity-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+#affinity-modal {
+  background: white;
+  border-radius: 12px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  animation: modalIn 0.2s ease;
+}
+
+@keyframes modalIn {
   from {
-    transform: rotate(0deg);
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
   }
   to {
-    transform: rotate(360deg);
+    opacity: 1;
+    transform: scale(1) translateY(0);
   }
 }
 
-/* Responsive - smaller on mobile */
+.affinity-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.affinity-modal-header span {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+#affinity-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+#affinity-modal-close:hover {
+  color: #333;
+}
+
+#affinity-modal-body {
+  padding: 20px;
+}
+
+#affinity-modal-body label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 8px;
+}
+
+#affinity-note-input {
+  width: 100%;
+  min-height: 80px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+#affinity-note-input:focus {
+  outline: none;
+  border-color: #5c5ce0;
+  box-shadow: 0 0 0 3px rgba(92, 92, 224, 0.1);
+}
+
+#affinity-note-input::placeholder {
+  color: #aaa;
+}
+
+/* Duplicate Warning */
+#affinity-duplicate-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #fff8e6;
+  border: 1px solid #ffd666;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #8a6d3b;
+}
+
+#affinity-duplicate-warning svg {
+  flex-shrink: 0;
+  stroke: #d4a012;
+}
+
+#affinity-duplicate-warning span {
+  flex: 1;
+}
+
+#affinity-duplicate-link {
+  color: #5c5ce0;
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+#affinity-duplicate-link:hover {
+  text-decoration: underline;
+}
+
+.affinity-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #eee;
+}
+
+#affinity-modal-cancel {
+  padding: 10px 20px;
+  background: #f5f5f5;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+#affinity-modal-cancel:hover {
+  background: #eee;
+}
+
+#affinity-modal-submit {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #5c5ce0 0%, #4a4ad4 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+#affinity-modal-submit:hover {
+  background: linear-gradient(135deg, #4a4ad4 0%, #3939c4 100%);
+}
+
+#affinity-modal-submit:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Success Toast */
+#affinity-success-toast {
+  position: fixed;
+  bottom: 90px;
+  right: 24px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: #1a1a1a;
+  color: white;
+  border-radius: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  transform: translateY(20px);
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+#affinity-success-toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+#affinity-success-toast svg {
+  stroke: #34c759;
+}
+
+#affinity-success-toast a {
+  color: #5c5ce0;
+  text-decoration: none;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+#affinity-success-toast a:hover {
+  text-decoration: underline;
+}
+
+/* Responsive */
 @media (max-width: 768px) {
   #affinity-stealth-btn {
     padding: 10px 16px;
     font-size: 13px;
     bottom: 16px;
     right: 16px;
+  }
+
+  #affinity-modal {
+    width: 95vw;
+    margin: 16px;
+  }
+
+  #affinity-success-toast {
+    right: 16px;
+    bottom: 80px;
+    left: 16px;
   }
 }

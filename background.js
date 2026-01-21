@@ -10,6 +10,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true; // Keep message channel open for async response
   }
+  if (request.action === 'checkDuplicate') {
+    checkForDuplicate(request.data)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ exists: false, error: error.message }));
+    return true;
+  }
 });
 
 async function handleAddToAffinity(data) {
@@ -68,17 +74,78 @@ async function handleAddToAffinity(data) {
       console.log('Set owner to:', currentUser.first_name, currentUser.last_name);
     }
 
+    // Add note if provided
+    if (data.note && data.note.trim()) {
+      await addNote(settings.affinityApiKey, organization.id, data.note.trim());
+      console.log('Added note');
+    }
+
+    // Build Affinity URL
+    const affinityUrl = `https://app.affinity.co/organizations/${organization.id}`;
+
     return {
       success: true,
       organization: organization,
       person: person || null,
       listEntry: listEntry,
-      owner: currentUser
+      owner: currentUser,
+      affinityUrl: affinityUrl
     };
   } catch (error) {
     console.error('Affinity API Error:', error);
     throw error;
   }
+}
+
+async function checkForDuplicate(data) {
+  const settings = await chrome.storage.sync.get(['affinityApiKey']);
+  if (!settings.affinityApiKey) {
+    return { exists: false };
+  }
+
+  const apiKey = settings.affinityApiKey;
+  let searchTerm = '';
+
+  if (data.type === 'linkedin_profile') {
+    searchTerm = `Stealth_${data.fullName}`;
+  } else {
+    searchTerm = data.domain || data.companyName;
+  }
+
+  try {
+    // Search for existing organization
+    const response = await fetch(`${AFFINITY_API_BASE}/organizations?term=${encodeURIComponent(searchTerm)}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Basic ' + btoa(':' + apiKey),
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      const orgs = result.organizations || result;
+      if (Array.isArray(orgs) && orgs.length > 0) {
+        // Check for exact match on domain or name
+        const exactMatch = orgs.find(org =>
+          (data.domain && org.domain === data.domain) ||
+          org.name === searchTerm ||
+          org.name === data.companyName
+        );
+        if (exactMatch) {
+          return {
+            exists: true,
+            organization: exactMatch,
+            affinityUrl: `https://app.affinity.co/organizations/${exactMatch.id}`
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.log('Duplicate check failed:', e);
+  }
+
+  return { exists: false };
 }
 
 async function getCurrentUser(apiKey) {
@@ -328,6 +395,29 @@ async function addLinkedInField(apiKey, personId, linkedinUrl) {
     }
   } catch (e) {
     console.log('Failed to add LinkedIn field:', e);
+  }
+}
+
+async function addNote(apiKey, organizationId, noteContent) {
+  try {
+    const response = await fetch(`${AFFINITY_API_BASE}/notes`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + btoa(':' + apiKey),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        organization_ids: [organizationId],
+        content: noteContent
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.log('Failed to add note:', errorData);
+    }
+  } catch (e) {
+    console.log('Failed to add note:', e);
   }
 }
 

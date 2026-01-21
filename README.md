@@ -32,9 +32,18 @@ Chrome extension to quickly add companies and stealth founders to Affinity CRM.
 
 ## Usage
 
-1. Go to any LinkedIn profile (`linkedin.com/in/...`)
-2. Click the purple **Add to Affinity** button in the bottom right corner
-3. Done! Check Affinity to see the new entry with you as the owner
+1. Go to any website or LinkedIn profile
+2. Click the purple **Add to Affinity** button (or press `Cmd+Shift+A`)
+3. Add an optional note in the modal that appears
+4. Click "Add to Affinity"
+5. Click the "Open" link in the success toast to view in Affinity
+
+## Features
+
+- **Keyboard shortcut**: `Cmd+Shift+A` (Mac) or `Ctrl+Shift+A` (Windows)
+- **Quick notes**: Add a note when adding (e.g., "Met at demo day")
+- **Duplicate detection**: Warns if the company already exists in Affinity
+- **Direct link**: Success toast includes a link to open the entry in Affinity
 
 ## Team Members
 
