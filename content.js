@@ -12,6 +12,9 @@
     if (url.includes('linkedin.com/in/')) {
       return 'linkedin_profile';
     }
+    if (window.location.hostname.includes('signa.software') || window.location.hostname.includes('app.signa')) {
+      return 'signa';
+    }
     return 'website';
   }
 
@@ -41,6 +44,14 @@
         <span>Add Stealth</span>
       `;
       button.title = 'Add as Stealth founder to Affinity (⌘+Shift+A)';
+    } else if (pageType === 'signa') {
+      button.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        <span>Add Person</span>
+      `;
+      button.title = 'Add this person to Interesting People (⌘+Shift+A)';
     } else {
       button.innerHTML = `
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -118,8 +129,15 @@
     }
 
     const pageType = getPageType();
-    const title = pageType === 'linkedin_profile' ? 'Add Stealth Founder' : 'Add Company';
-    document.getElementById('affinity-modal-title').textContent = title;
+    const titleMap = { linkedin_profile: 'Add Stealth Founder', signa: 'Add Person from Signa', website: 'Add Company' };
+    document.getElementById('affinity-modal-title').textContent = titleMap[pageType] || 'Add to Affinity';
+
+    // Auto-select Interesting People for Signa pages
+    if (pageType === 'signa') {
+      overlay.querySelectorAll('.affinity-list-option').forEach(b => b.classList.remove('selected'));
+      const peopleBtn = overlay.querySelector('.affinity-list-option[data-list="interesting_people"]');
+      if (peopleBtn) peopleBtn.classList.add('selected');
+    }
     document.getElementById('affinity-note-input').value = '';
     document.getElementById('affinity-duplicate-warning').style.display = 'none';
 
@@ -147,6 +165,8 @@
 
     if (pageType === 'linkedin_profile') {
       data = extractLinkedInData();
+    } else if (pageType === 'signa') {
+      data = extractSignaData();
     } else {
       data = extractWebsiteData();
     }
@@ -180,6 +200,26 @@
 
     return {
       type: 'linkedin_profile',
+      fullName,
+      linkedinUrl
+    };
+  }
+
+  // Extract person data from Signa profile
+  function extractSignaData() {
+    // Try to find the person's name from the profile card
+    const nameEl = document.querySelector('h1.text-lg.font-semibold') || document.querySelector('h1');
+    const fullName = nameEl ? nameEl.textContent.trim() : null;
+
+    // Try to find LinkedIn URL from the page
+    let linkedinUrl = null;
+    const linkedinLinks = document.querySelectorAll('a[href*="linkedin.com/in/"]');
+    if (linkedinLinks.length > 0) {
+      linkedinUrl = linkedinLinks[0].href;
+    }
+
+    return {
+      type: 'signa',
       fullName,
       linkedinUrl
     };
@@ -236,6 +276,11 @@
         data = extractLinkedInData();
         if (!data.fullName) {
           throw new Error('Could not extract profile name.');
+        }
+      } else if (pageType === 'signa') {
+        data = extractSignaData();
+        if (!data.fullName) {
+          throw new Error('Could not extract person name from Signa.');
         }
       } else {
         data = extractWebsiteData();

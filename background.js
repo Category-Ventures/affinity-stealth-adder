@@ -103,7 +103,7 @@ async function handleInterestingPeople(settings, data, currentUser) {
   // Extract name - from LinkedIn or website
   let firstName, lastName, linkedinUrl;
 
-  if (data.type === 'linkedin_profile') {
+  if (data.type === 'linkedin_profile' || data.type === 'signa') {
     const nameParts = data.fullName.split(' ');
     firstName = nameParts[0];
     lastName = nameParts.slice(1).join(' ') || firstName;

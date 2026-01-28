@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const tenantSubdomainInput = document.getElementById('tenantSubdomain');
   const userEmailInput = document.getElementById('userEmail');
   const saveButton = document.getElementById('save');
+  const toggleButton = document.getElementById('toggleButton');
   const statusDiv = document.getElementById('status');
 
   // Load saved settings
@@ -47,6 +48,22 @@ document.addEventListener('DOMContentLoaded', () => {
       affinityUserEmail: userEmail
     }, () => {
       showStatus('Settings saved successfully!', 'success');
+    });
+  });
+
+  // Load toggle button state
+  chrome.storage.sync.get(['affinityButtonHidden'], (result) => {
+    toggleButton.textContent = result.affinityButtonHidden ? 'Show Floating Button' : 'Hide Floating Button';
+  });
+
+  // Toggle floating button visibility
+  toggleButton.addEventListener('click', () => {
+    chrome.storage.sync.get(['affinityButtonHidden'], (result) => {
+      const newState = !result.affinityButtonHidden;
+      chrome.storage.sync.set({ affinityButtonHidden: newState }, () => {
+        toggleButton.textContent = newState ? 'Show Floating Button' : 'Hide Floating Button';
+        showStatus(newState ? 'Floating button hidden' : 'Floating button visible', 'success');
+      });
     });
   });
 
