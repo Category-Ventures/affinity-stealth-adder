@@ -63,8 +63,110 @@
     }
 
     document.body.appendChild(button);
-    button.addEventListener('click', showNoteModal);
+
+    // Restore saved position, or use default bottom-right
+    const { affinityBtnPosition } = await chrome.storage.sync.get(['affinityBtnPosition']);
+    if (affinityBtnPosition) {
+      // Clamp to current viewport so it's never off-screen
+      const x = Math.min(Math.max(0, affinityBtnPosition.x), window.innerWidth - button.offsetWidth);
+      const y = Math.min(Math.max(0, affinityBtnPosition.y), window.innerHeight - button.offsetHeight);
+      button.style.left = x + 'px';
+      button.style.top = y + 'px';
+      button.style.right = 'auto';
+      button.style.bottom = 'auto';
+    }
+
+    // Make button draggable (also handles click → showNoteModal)
+    makeDraggable(button);
+
     return button;
+  }
+
+  // ── Drag-to-move logic ──────────────────────────────────────────
+  function makeDraggable(button) {
+    let isDragging = false;
+    let wasDragged = false;
+    let startX, startY, origLeft, origTop;
+    const DRAG_THRESHOLD = 5; // px – distinguish click from drag
+
+    button.addEventListener('mousedown', onMouseDown);
+
+    function onMouseDown(e) {
+      // Only left-click, ignore if loading
+      if (e.button !== 0 || button.classList.contains('loading')) return;
+
+      isDragging = false;
+      wasDragged = false;
+
+      // Resolve current position to top/left (in case it's still bottom/right)
+      const rect = button.getBoundingClientRect();
+      origLeft = rect.left;
+      origTop = rect.top;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      // Don't preventDefault here — it would kill the click event for normal taps
+    }
+
+    function onMouseMove(e) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      if (!isDragging) {
+        if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+        isDragging = true;
+        wasDragged = true;
+        button.classList.add('dragging');
+        // Switch to absolute top/left positioning
+        button.style.right = 'auto';
+        button.style.bottom = 'auto';
+        e.preventDefault(); // prevent text selection only once we know it's a drag
+      }
+
+      // Clamp inside viewport
+      let newLeft = origLeft + dx;
+      let newTop = origTop + dy;
+      const maxLeft = window.innerWidth - button.offsetWidth;
+      const maxTop = window.innerHeight - button.offsetHeight;
+      newLeft = Math.min(Math.max(0, newLeft), maxLeft);
+      newTop = Math.min(Math.max(0, newTop), maxTop);
+
+      button.style.left = newLeft + 'px';
+      button.style.top = newTop + 'px';
+    }
+
+    function onMouseUp() {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+
+      if (isDragging) {
+        button.classList.remove('dragging');
+        isDragging = false;
+
+        // Persist position
+        const rect = button.getBoundingClientRect();
+        chrome.storage.sync.set({
+          affinityBtnPosition: { x: rect.left, y: rect.top }
+        });
+
+        // Reset wasDragged after a tick so the click interceptor can
+        // still swallow the drag-end click, but it won't linger and
+        // block the *next* real click
+        setTimeout(() => { wasDragged = false; }, 0);
+      }
+    }
+
+    // Single click handler: open modal on normal clicks, ignore after drags
+    button.addEventListener('click', (e) => {
+      if (wasDragged) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      showNoteModal();
+    });
   }
 
   // Create modal for notes input
@@ -333,7 +435,7 @@
     }
   }
 
-  // Show success toast with link
+  // Show success toast with link (positioned above the button)
   function showSuccessToast(affinityUrl) {
     const toast = document.createElement('div');
     toast.id = 'affinity-success-toast';
@@ -345,6 +447,16 @@
       <a href="${affinityUrl}" target="_blank">Open →</a>
     `;
     document.body.appendChild(toast);
+
+    // Position toast near the button
+    const button = document.getElementById('affinity-stealth-btn');
+    if (button) {
+      const rect = button.getBoundingClientRect();
+      toast.style.bottom = 'auto';
+      toast.style.right = 'auto';
+      toast.style.left = rect.left + 'px';
+      toast.style.top = (rect.top - toast.offsetHeight - 10) + 'px';
+    }
 
     // Animate in
     setTimeout(() => toast.classList.add('show'), 10);

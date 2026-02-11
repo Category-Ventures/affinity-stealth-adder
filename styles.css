@@ -17,18 +17,22 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
+  cursor: grab;
   box-shadow: 0 4px 12px rgba(92, 92, 224, 0.4), 0 2px 4px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #affinity-stealth-btn:hover {
-  transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(92, 92, 224, 0.5), 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
-#affinity-stealth-btn:active {
-  transform: translateY(0);
+#affinity-stealth-btn.dragging {
+  cursor: grabbing;
+  box-shadow: 0 8px 24px rgba(92, 92, 224, 0.6), 0 4px 8px rgba(0, 0, 0, 0.2);
+  opacity: 0.9;
+  transition: none;
 }
 
 #affinity-stealth-btn svg {
@@ -280,6 +284,7 @@
   bottom: 90px;
   right: 24px;
   z-index: 2147483647;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -320,8 +325,6 @@
   #affinity-stealth-btn {
     padding: 10px 16px;
     font-size: 13px;
-    bottom: 16px;
-    right: 16px;
   }
 
   #affinity-modal {
@@ -331,7 +334,6 @@
 
   #affinity-success-toast {
     right: 16px;
-    bottom: 80px;
     left: 16px;
   }
 }
