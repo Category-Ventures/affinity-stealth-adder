@@ -292,12 +292,13 @@
 
   // Extract profile data from LinkedIn page
   function extractLinkedInData() {
-    const nameElement = document.querySelector('h1.text-heading-xlarge') ||
-                        document.querySelector('h1[class*="text-heading"]') ||
-                        document.querySelector('.pv-top-card h1') ||
-                        document.querySelector('h1');
+    // Primary method: extract from page title (format: "Name | LinkedIn")
+    let fullName = null;
+    const title = document.title;
+    if (title && title.includes(' | LinkedIn')) {
+      fullName = title.split(' | LinkedIn')[0].trim();
+    }
 
-    const fullName = nameElement ? nameElement.textContent.trim() : null;
     const linkedinUrl = window.location.href.split('?')[0];
 
     return {
