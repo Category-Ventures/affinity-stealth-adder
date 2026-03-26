@@ -82,14 +82,19 @@ async function handleMasterDealList(settings, data, currentUser) {
     await setListEntryOwner(apiKey, listId, listEntry.id, organization.id, currentUser);
   }
 
-  // Set Source field (MDL list-specific field, requires list_entry_id)
+  // Set Source field — value_type 2 (dropdown) expects the option text, not the ID
   if (data.source && listEntry) {
-    await setFieldValue(apiKey, 5131030, organization.id, listEntry.id, parseInt(data.source));
+    await setFieldValue(apiKey, 5131030, organization.id, listEntry.id, data.source);
   }
 
   // Set CEO Location (LinkedIn only, from extracted profile location)
   if (data.location && data.type === 'linkedin_profile' && listEntry) {
     await setFieldValue(apiKey, 5131327, organization.id, listEntry.id, data.location);
+  }
+
+  // Store LinkedIn URL on the org (field 5096625, entity_type 1 = org)
+  if (data.linkedinUrl && data.type === 'linkedin_profile') {
+    await setFieldValue(apiKey, 5096625, organization.id, null, data.linkedinUrl, 1);
   }
 
   // Add note
@@ -581,50 +586,16 @@ async function findPersonByLinkedIn(apiKey, linkedinUrl) {
 
 async function addLinkedInField(apiKey, personId, linkedinUrl) {
   if (!linkedinUrl) return;
-  try {
-    // Fetch all global fields and find the LinkedIn URL field for persons
-    const fieldsResponse = await fetch(`${AFFINITY_API_BASE}/fields`, {
-      method: 'GET',
-      headers: {
-        'Authorization': 'Basic ' + btoa(':' + apiKey),
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (fieldsResponse.ok) {
-      const fields = await fieldsResponse.json();
-      const linkedinField = fields.find(f =>
-        f.name.toLowerCase().includes('linkedin') &&
-        !f.list_id  // global person field, not list-specific
-      );
-
-      if (linkedinField) {
-        await fetch(`${AFFINITY_API_BASE}/field-values`, {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + btoa(':' + apiKey),
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            field_id: linkedinField.id,
-            entity_id: personId,
-            value: linkedinUrl
-          })
-        });
-        console.log('LinkedIn URL stored on person:', linkedinUrl);
-      } else {
-        console.log('No LinkedIn field found on persons');
-      }
-    }
-  } catch (e) {
-    console.log('Failed to add LinkedIn field:', e);
-  }
+  // Field 5096650 is the global LinkedIn URL field for persons (entity_type 0 = person)
+  await setFieldValue(apiKey, 5096650, personId, null, linkedinUrl, 0);
 }
 
-async function setFieldValue(apiKey, fieldId, entityId, listEntryId, value) {
+// entityType: 0 = Person, 1 = Organization (required for global fields with no list_entry_id)
+async function setFieldValue(apiKey, fieldId, entityId, listEntryId, value, entityType) {
   try {
     const body = { field_id: fieldId, entity_id: entityId, value };
     if (listEntryId) body.list_entry_id = listEntryId;
+    if (entityType !== undefined) body.entity_type = entityType;
     const response = await fetch(`${AFFINITY_API_BASE}/field-values`, {
       method: 'POST',
       headers: {
