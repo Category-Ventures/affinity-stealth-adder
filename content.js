@@ -195,6 +195,18 @@
               <button type="button" class="affinity-list-option" data-list="interesting_people">Interesting People</button>
             </div>
           </div>
+          <div id="affinity-source-picker">
+            <label for="affinity-source-select">Source <span style="color:#e53e3e">*</span></label>
+            <select id="affinity-source-select">
+              <option value="">Select source...</option>
+              <option value="19736093">Inbound</option>
+              <option value="19736094">Outbound</option>
+              <option value="19736095">VC Intro</option>
+              <option value="19736096">Operator Intro</option>
+              <option value="19736097">Accelerator</option>
+              <option value="19736098">Conference</option>
+            </select>
+          </div>
           <label for="affinity-note-input">Add a note (optional)</label>
           <textarea id="affinity-note-input" placeholder="e.g., Met at demo day, interesting AI startup..."></textarea>
         </div>
@@ -240,6 +252,21 @@
       const peopleBtn = overlay.querySelector('.affinity-list-option[data-list="interesting_people"]');
       if (peopleBtn) peopleBtn.classList.add('selected');
     }
+
+    // Show/hide source picker based on selected list
+    function updateSourceVisibility() {
+      const selectedList = overlay.querySelector('.affinity-list-option.selected');
+      const sourcePicker = document.getElementById('affinity-source-picker');
+      if (sourcePicker) {
+        sourcePicker.style.display = (selectedList && selectedList.dataset.list === 'master_deal') ? 'block' : 'none';
+      }
+    }
+    overlay.querySelectorAll('.affinity-list-option').forEach(btn => {
+      btn.addEventListener('click', updateSourceVisibility);
+    });
+    updateSourceVisibility();
+
+    document.getElementById('affinity-source-select').value = '';
     document.getElementById('affinity-note-input').value = '';
     document.getElementById('affinity-duplicate-warning').style.display = 'none';
 
@@ -290,6 +317,43 @@
     }
   }
 
+  // Parse a LinkedIn location string into structured {city, state, country}
+  function parseLinkedInLocation(text) {
+    if (!text) return null;
+    const loc = text.trim();
+
+    // "Greater X Area" / "Greater X Metropolitan Area"
+    const greaterMatch = loc.match(/^Greater (.+?)(?:\s+City)?\s+(?:Metropolitan\s+)?Area$/i);
+    if (greaterMatch) {
+      return { city: greaterMatch[1].trim(), state: null, country: 'United States' };
+    }
+
+    const parts = loc.split(',').map(p => p.trim()).filter(Boolean);
+    if (parts.length === 1) return { city: null, state: null, country: parts[0] };
+
+    const usStates = new Set([
+      'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut',
+      'Delaware','Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa',
+      'Kansas','Kentucky','Louisiana','Maine','Maryland','Massachusetts','Michigan',
+      'Minnesota','Mississippi','Missouri','Montana','Nebraska','Nevada',
+      'New Hampshire','New Jersey','New Mexico','New York','North Carolina',
+      'North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Rhode Island',
+      'South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont',
+      'Virginia','Washington','West Virginia','Wisconsin','Wyoming',
+      'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN',
+      'IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV',
+      'NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN',
+      'TX','UT','VT','VA','WA','WV','WI','WY','DC'
+    ]);
+
+    if (parts.length === 2) {
+      if (usStates.has(parts[1])) return { city: parts[0], state: parts[1], country: 'United States' };
+      return { city: parts[0], state: null, country: parts[1] };
+    }
+    // 3+ parts: city, state/region, country
+    return { city: parts[0], state: parts[1], country: parts[2] };
+  }
+
   // Extract profile data from LinkedIn page
   function extractLinkedInData() {
     // Primary method: extract from page title (format: "Name | LinkedIn")
@@ -301,10 +365,34 @@
 
     const linkedinUrl = window.location.href.split('?')[0];
 
+    // Try to extract location — LinkedIn changes class names often, so try multiple selectors
+    let location = null;
+    const locationSelectors = [
+      'span.text-body-small.inline.t-black--light.break-words',
+      '.pv-text-details__left-panel span.t-black--light',
+      '.ph5 span.t-black--light',
+      'span.t-black--light.break-words',
+    ];
+    for (const sel of locationSelectors) {
+      for (const el of document.querySelectorAll(sel)) {
+        const text = el.textContent.trim();
+        // Location text has commas, is short, and doesn't look like an email/URL
+        if (text && text.length < 80 && !text.includes('@') && !text.includes('http')) {
+          const parsed = parseLinkedInLocation(text);
+          if (parsed && (parsed.city || parsed.country)) {
+            location = parsed;
+            break;
+          }
+        }
+      }
+      if (location) break;
+    }
+
     return {
       type: 'linkedin_profile',
       fullName,
-      linkedinUrl
+      linkedinUrl,
+      location,
     };
   }
 
@@ -392,10 +480,19 @@
         }
       }
 
-      // Add note and selected list to data
+      // Add note, list, and source to data
       data.note = noteInput.value;
       const selectedList = document.querySelector('.affinity-list-option.selected');
       data.targetList = selectedList ? selectedList.dataset.list : 'master_deal';
+
+      // Require source for MDL additions
+      if (data.targetList === 'master_deal') {
+        const sourceSelect = document.getElementById('affinity-source-select');
+        if (!sourceSelect || !sourceSelect.value) {
+          throw new Error('Please select a source before adding to the Master Deal List.');
+        }
+        data.source = sourceSelect.value;
+      }
 
       // Send to background script
       const response = await chrome.runtime.sendMessage({
