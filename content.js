@@ -195,6 +195,18 @@
               <button type="button" class="affinity-list-option" data-list="interesting_people">Interesting People</button>
             </div>
           </div>
+          <div id="affinity-source-picker">
+            <label for="affinity-source-select">Source <span style="color:#e53e3e">*</span></label>
+            <select id="affinity-source-select">
+              <option value="">Select source...</option>
+              <option value="Inbound">Inbound</option>
+              <option value="Outbound">Outbound</option>
+              <option value="VC Intro">VC Intro</option>
+              <option value="Operator Intro">Operator Intro</option>
+              <option value="Accelerator">Accelerator</option>
+              <option value="Conference">Conference</option>
+            </select>
+          </div>
           <label for="affinity-note-input">Add a note (optional)</label>
           <textarea id="affinity-note-input" placeholder="e.g., Met at demo day, interesting AI startup..."></textarea>
         </div>
@@ -240,6 +252,21 @@
       const peopleBtn = overlay.querySelector('.affinity-list-option[data-list="interesting_people"]');
       if (peopleBtn) peopleBtn.classList.add('selected');
     }
+
+    // Show/hide source picker based on selected list
+    function updateSourceVisibility() {
+      const selectedList = overlay.querySelector('.affinity-list-option.selected');
+      const sourcePicker = document.getElementById('affinity-source-picker');
+      if (sourcePicker) {
+        sourcePicker.style.display = (selectedList && selectedList.dataset.list === 'master_deal') ? 'block' : 'none';
+      }
+    }
+    overlay.querySelectorAll('.affinity-list-option').forEach(btn => {
+      btn.addEventListener('click', updateSourceVisibility);
+    });
+    updateSourceVisibility();
+
+    document.getElementById('affinity-source-select').value = '';
     document.getElementById('affinity-note-input').value = '';
     document.getElementById('affinity-duplicate-warning').style.display = 'none';
 
@@ -290,6 +317,80 @@
     }
   }
 
+  const US_STATES = new Set([
+    'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut',
+    'Delaware','Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa',
+    'Kansas','Kentucky','Louisiana','Maine','Maryland','Massachusetts','Michigan',
+    'Minnesota','Mississippi','Missouri','Montana','Nebraska','Nevada',
+    'New Hampshire','New Jersey','New Mexico','New York','North Carolina',
+    'North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Rhode Island',
+    'South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont',
+    'Virginia','Washington','West Virginia','Wisconsin','Wyoming',
+    'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN',
+    'IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV',
+    'NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN',
+    'TX','UT','VT','VA','WA','WV','WI','WY','DC'
+  ]);
+
+  const KNOWN_COUNTRIES = new Set([
+    'United States','USA','US','Canada','United Kingdom','UK','Australia',
+    'Germany','France','India','China','Japan','Brazil','Mexico','Singapore',
+    'Israel','Netherlands','Sweden','Norway','Denmark','Finland','Switzerland',
+    'Spain','Italy','Portugal','Ireland','New Zealand','South Korea','Nigeria',
+    'Kenya','Ghana','South Africa','UAE','United Arab Emirates','Pakistan',
+    'Bangladesh','Indonesia','Malaysia','Philippines','Vietnam','Thailand',
+    'Argentina','Colombia','Chile','Peru','Egypt','Morocco','Turkey','Poland',
+    'Czech Republic','Austria','Belgium','Romania','Ukraine','Russia',
+    'Hong Kong','Taiwan','Sri Lanka','Nepal','Ethiopia','Tanzania','Uganda',
+    'Cameroon','Senegal','Ivory Coast','Zimbabwe','Zambia','Rwanda','Estonia',
+    'Latvia','Lithuania','Slovakia','Slovenia','Croatia','Serbia','Bulgaria',
+    'Hungary','Greece','Cyprus','Malta','Luxembourg','Iceland','Georgia',
+    'Armenia','Azerbaijan','Kazakhstan','Uzbekistan','Myanmar','Cambodia',
+    'Bolivia','Ecuador','Venezuela','Uruguay','Paraguay','Costa Rica',
+    'Guatemala','Honduras','El Salvador','Nicaragua','Panama','Cuba',
+    'Dominican Republic','Haiti','Jamaica','Trinidad and Tobago','Bahamas',
+    'Barbados','Guyana','Suriname','New Caledonia','Fiji','Papua New Guinea',
+  ]);
+
+  // Parse a LinkedIn location string into structured {city, state, country}
+  // Returns null if the text doesn't look like a real location
+  function parseLinkedInLocation(text) {
+    if (!text) return null;
+    const loc = text.trim();
+
+    // "Greater X Area" / "Greater X Metropolitan Area"
+    const greaterMatch = loc.match(/^Greater (.+?)(?:\s+City)?\s+(?:Metropolitan\s+)?Area$/i);
+    if (greaterMatch) {
+      return { city: greaterMatch[1].trim(), state: null, country: 'United States' };
+    }
+
+    // "X Bay Area" / "X Metro Area" / "X Metropolitan Area"
+    // Keep the full string as city (e.g. "San Francisco Bay Area") — more useful than stripping "Bay Area"
+    if (/\b(?:Bay|Metro(?:politan)?)\s+Area$/i.test(loc)) {
+      return { city: loc, state: null, country: 'United States' };
+    }
+
+    const parts = loc.split(',').map(p => p.trim()).filter(Boolean);
+
+    // Single word/phrase — only valid if it's a known country
+    if (parts.length === 1) {
+      return KNOWN_COUNTRIES.has(parts[0]) ? { city: null, state: null, country: parts[0] } : null;
+    }
+
+    const last = parts[parts.length - 1];
+
+    // Last part must be a known country, US state, or 2-letter state abbrev
+    const isKnownPlace = KNOWN_COUNTRIES.has(last) || US_STATES.has(last) || /^[A-Z]{2}$/.test(last);
+    if (!isKnownPlace) return null;
+
+    if (parts.length === 2) {
+      if (US_STATES.has(last)) return { city: parts[0], state: last, country: 'United States' };
+      return { city: parts[0], state: null, country: last };
+    }
+    // 3+ parts: city, state/region, country
+    return { city: parts[0], state: parts[1], country: parts[2] };
+  }
+
   // Extract profile data from LinkedIn page
   function extractLinkedInData() {
     // Primary method: extract from page title (format: "Name | LinkedIn")
@@ -301,10 +402,149 @@
 
     const linkedinUrl = window.location.href.split('?')[0];
 
+    // Try to extract location from LinkedIn profile
+    let location = null;
+    // Matches: "City, State", "City, Country", "Greater X Area", "X Bay Area", "X Metro Area"
+    const locationPattern = /^(Greater .+? Area|.+\s+(?:Bay|Metro(?:politan)?)\s+Area|.+,\s*.+)$/i;
+
+    function tryParseLocation(text, source) {
+      if (!text || text.length > 100 || text.includes('@') || text.includes('http')) return false;
+      if (/\b[A-Z]{2,}-[A-Z]{2,}\b/.test(text)) return false;  // credentials e.g. MS-HRM
+      if (/\b(engineer|manager|director|founder|ceo|cto|vp|head|lead|senior|associate|analyst|connections?|followers?|recruiter|intern)\b/i.test(text)) return false;
+      // Must match the location pattern
+      if (!locationPattern.test(text)) return false;
+      const parsed = parseLinkedInLocation(text);
+      if (parsed && (parsed.city || parsed.country)) {
+        location = parsed;
+        console.log('Affinity: found location via', source + ':', text, '→', parsed);
+        return true;
+      }
+      return false;
+    }
+
+    // Strategy 0a: class/attribute-based selectors — most reliable if LinkedIn's class names cooperate
+    const locationSelectors = [
+      '[class*="location"]',
+      '[class*="geo"]',
+      '[data-field="location"]',
+      '.pv-top-card--list-bullet li',
+    ];
+    for (const selector of locationSelectors) {
+      try {
+        for (const el of document.querySelectorAll(selector)) {
+          if (tryParseLocation(el.textContent.trim(), 'selector:' + selector)) break;
+        }
+      } catch(e) {}
+      if (location) break;
+    }
+
+    // Strategy 0b: find name element, then look at nearby siblings/cousins for location
+    if (!location && fullName) {
+      const nameEls = Array.from(document.querySelectorAll('h1, [class*="name"]'))
+        .filter(el => el.textContent.trim() === fullName);
+      for (const nameEl of nameEls) {
+        // Walk up to a top-card container, then scan all descendants
+        const container = nameEl.closest('[class*="top-card"], [class*="profile-info"], [class*="pv-top"]')
+          || nameEl.parentElement?.parentElement?.parentElement;
+        if (!container) continue;
+        for (const el of container.querySelectorAll('span, li')) {
+          const text = el.textContent.trim();
+          if (text === fullName) continue;
+          if (tryParseLocation(text, 'near-name')) break;
+        }
+        if (location) break;
+      }
+    }
+
+    // Strategy 0c: check embedded JSON (LinkedIn sometimes stores data in <code> blocks)
+    if (!location) {
+      for (const el of document.querySelectorAll('code, script[type="application/ld+json"], script[type="application/json"]')) {
+        try {
+          const json = JSON.parse(el.textContent);
+          // JSON-LD Person schema
+          const addr = json?.address || json?.data?.profile?.location;
+          if (addr) {
+            const loc = typeof addr === 'string' ? addr : (addr.addressLocality || addr.addressRegion || '');
+            if (loc) tryParseLocation(loc, 'json-ld');
+          }
+          // LinkedIn voyager API style
+          const geoName = json?.data?.geoLocationName || json?.geoLocationName;
+          if (geoName && !location) tryParseLocation(geoName, 'json-geo');
+        } catch(e) {}
+        if (location) break;
+      }
+    }
+
+    // Strategy 1: scan leaf text elements (textContent)
+    if (!location) {
+      for (const el of document.querySelectorAll('span, div, p, li')) {
+        if (el.children.length > 2) continue;
+        if (tryParseLocation(el.textContent.trim(), 'textContent')) break;
+      }
+    }
+
+    // Strategy 2: scan aria-label attributes
+    if (!location) {
+      for (const el of document.querySelectorAll('[aria-label]')) {
+        if (tryParseLocation((el.getAttribute('aria-label') || '').trim(), 'aria-label')) break;
+      }
+    }
+
+    // Strategy 3: scan innerText of elements (catches CSS-joined text)
+    if (!location) {
+      for (const el of document.querySelectorAll('span, div, p')) {
+        const lines = (el.innerText || '').trim().split('\n');
+        for (const line of lines.slice(0, 3)) {  // check first 3 lines of each element
+          if (tryParseLocation(line.trim(), 'innerText')) break;
+        }
+        if (location) break;
+      }
+    }
+
+    if (!location) {
+      // Debug: elements that have "location" or "geo" in their class name
+      const locClassEls = Array.from(document.querySelectorAll('[class]'))
+        .filter(el => el.className && typeof el.className === 'string' && /location|geo/i.test(el.className))
+        .slice(0, 10)
+        .map(el => `${el.tagName}.${el.className.trim().split(/\s+/)[0]}: "${el.textContent.trim().slice(0, 80)}"`);
+      console.log('Affinity: location/geo class elements:', locClassEls);
+
+      // Debug: all text nodes sorted by page position, dedup keeping FIRST (topmost) per text
+      const allNodes = [];
+      for (const el of document.querySelectorAll('*')) {
+        for (const n of el.childNodes) {
+          if (n.nodeType === 3) {
+            const t = n.textContent.trim();
+            if (t && t.length > 2 && t.length < 100) {
+              const rect = el.getBoundingClientRect();
+              const top = rect.top + window.scrollY;
+              allNodes.push({ t, top, visible: rect.width > 0 && rect.height > 0 });
+            }
+          }
+        }
+      }
+      allNodes.sort((a, b) => a.top - b.top);
+      // Keep first (topmost) occurrence of each text; separate visible vs hidden
+      const seen = new Set();
+      const unique = allNodes.filter(n => { if (seen.has(n.t)) return false; seen.add(n.t); return true; });
+      const visible = unique.filter(n => n.visible).slice(0, 30);
+      const hidden = unique.filter(n => !n.visible).slice(0, 10);
+      console.log('Affinity: top 30 VISIBLE text nodes:', visible.map(n => n.top.toFixed(0) + 'px: ' + n.t));
+      console.log('Affinity: sample HIDDEN text nodes (display:none):', hidden.map(n => n.t));
+
+      // Debug: innerText of top 5 non-nav visible spans as a cross-check
+      const topSpans = Array.from(document.querySelectorAll('span'))
+        .filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top > 50 && r.top < 500; })
+        .slice(0, 20)
+        .map(el => `${el.getBoundingClientRect().top.toFixed(0)}px: "${(el.innerText || '').trim().slice(0, 80)}"`);
+      console.log('Affinity: visible spans in top 500px of viewport:', topSpans);
+    }
+
     return {
       type: 'linkedin_profile',
       fullName,
-      linkedinUrl
+      linkedinUrl,
+      location,
     };
   }
 
@@ -392,10 +632,19 @@
         }
       }
 
-      // Add note and selected list to data
+      // Add note, list, and source to data
       data.note = noteInput.value;
       const selectedList = document.querySelector('.affinity-list-option.selected');
       data.targetList = selectedList ? selectedList.dataset.list : 'master_deal';
+
+      // Require source for MDL additions
+      if (data.targetList === 'master_deal') {
+        const sourceSelect = document.getElementById('affinity-source-select');
+        if (!sourceSelect || !sourceSelect.value) {
+          throw new Error('Please select a source before adding to the Master Deal List.');
+        }
+        data.source = sourceSelect.value;
+      }
 
       // Send to background script
       const response = await chrome.runtime.sendMessage({

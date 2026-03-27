@@ -82,6 +82,21 @@ async function handleMasterDealList(settings, data, currentUser) {
     await setListEntryOwner(apiKey, listId, listEntry.id, organization.id, currentUser);
   }
 
+  // Set Source field — value_type 2 (dropdown) expects the option text, not the ID
+  if (data.source && listEntry) {
+    await setFieldValue(apiKey, 5131030, organization.id, listEntry.id, data.source);
+  }
+
+  // Set CEO Location (LinkedIn only, from extracted profile location)
+  if (data.location && data.type === 'linkedin_profile' && listEntry) {
+    await setFieldValue(apiKey, 5131327, organization.id, listEntry.id, data.location);
+  }
+
+  // Store LinkedIn URL on the org (field 5096625, entity_type 1 = org)
+  if (data.linkedinUrl && data.type === 'linkedin_profile') {
+    await setFieldValue(apiKey, 5096625, organization.id, null, data.linkedinUrl, 1);
+  }
+
   // Add note
   if (data.note && data.note.trim()) {
     await addNote(apiKey, organization.id, data.note.trim());
@@ -570,43 +585,29 @@ async function findPersonByLinkedIn(apiKey, linkedinUrl) {
 }
 
 async function addLinkedInField(apiKey, personId, linkedinUrl) {
-  // This adds the LinkedIn URL to the person's profile
-  // Affinity stores LinkedIn as a social profile field
-  // The exact implementation depends on your Affinity field configuration
+  if (!linkedinUrl) return;
+  // Field 5096650 is the global LinkedIn URL field for persons (entity_type 0 = person)
+  await setFieldValue(apiKey, 5096650, personId, null, linkedinUrl, 0);
+}
+
+// entityType: 0 = Person, 1 = Organization (required for global fields with no list_entry_id)
+async function setFieldValue(apiKey, fieldId, entityId, listEntryId, value, entityType) {
   try {
-    // Get available fields for persons to find LinkedIn field
-    const fieldsResponse = await fetch(`${AFFINITY_API_BASE}/persons/fields`, {
-      method: 'GET',
+    const body = { field_id: fieldId, entity_id: entityId, value };
+    if (listEntryId) body.list_entry_id = listEntryId;
+    if (entityType !== undefined) body.entity_type = entityType;
+    const response = await fetch(`${AFFINITY_API_BASE}/field-values`, {
+      method: 'POST',
       headers: {
         'Authorization': 'Basic ' + btoa(':' + apiKey),
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify(body)
     });
-
-    if (fieldsResponse.ok) {
-      const fields = await fieldsResponse.json();
-      const linkedinField = fields.find(f =>
-        f.name.toLowerCase().includes('linkedin') ||
-        f.value_type === 'linkedin'
-      );
-
-      if (linkedinField) {
-        await fetch(`${AFFINITY_API_BASE}/field-values`, {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + btoa(':' + apiKey),
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            field_id: linkedinField.id,
-            entity_id: personId,
-            value: linkedinUrl
-          })
-        });
-      }
-    }
+    const text = await response.text();
+    console.log(`setFieldValue field=${fieldId}:`, response.status, text);
   } catch (e) {
-    console.log('Failed to add LinkedIn field:', e);
+    console.log('setFieldValue failed:', e);
   }
 }
 
